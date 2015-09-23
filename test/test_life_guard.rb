@@ -11,6 +11,8 @@ class TestLifeGuard < Minitest::Test
     end
   end
 
+
+
   def setup
     @dummy_app = Dummy.new
     ActiveRecord::Base.configurations = { 'test' => {'adapter' => 'sqlite3', 'database' => 'test/db/test.db'} }
@@ -20,6 +22,9 @@ class TestLifeGuard < Minitest::Test
       config
     end
     @lifeguard = LifeGuard::Rack.new(@dummy_app, { :header => "HTTP_FOO", :transformation => proc})
+  end
+
+  def teardown
   end
 
   def test_that_it_has_a_version_number
@@ -50,7 +55,7 @@ class TestLifeGuard < Minitest::Test
 
   def test_it_returns_404_if_no_connection
     proc = Proc.new do |config, header| 
-      config['test']['database'] = config['test']['database'].gsub(/test\./, "foobar_#{header}.")
+      config['test']['database'] = config['test']['database'].gsub(/test\./, "/foo/bar/bar/foobar_#{header}.")
       config
     end
     @lifeguard = LifeGuard::Rack.new(@dummy_app, { :header => "HTTP_FOO", 

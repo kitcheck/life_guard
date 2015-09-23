@@ -14,26 +14,26 @@ module LifeGuard
 
     def call(env)
       begin
-        if !env[@header_key].blank?
-          switch_connection(env[@header_key])
-        end
-        return @app.call(env)
+        switch_connection(env[@header_key]) if !env[@header_key].blank?
       rescue 
-        [404, {'Content-Type' => 'text/html'}, ["#{@failure_message}"]]
-      ensure 
-        reset_connection if env[@header_key]
+        return [404, {'Content-Type' => 'text/html'}, ["#{@failure_message}"]]
+      else
+        return @app.call(env)
+      ensure
+        change_connection(@config) if env[@header_key]
       end
     end
 private
     def switch_connection(header)
       modified_config = @lambda.call(@config.deep_dup, header)
-      ActiveRecord::Base.clear_active_connections!
-      ActiveRecord::Base.configurations = modified_config
-      ActiveRecord::Base.establish_connection
+      change_connection(modified_config)
     end
 
-    def reset_connection
-      ActiveRecord::Base.configurations = @config
+    def change_connection(destination_config)
+      ActiveRecord::Base.clear_active_connections!
+      ActiveRecord::Base.configurations = destination_config
+      ActiveRecord::Base.establish_connection
+      ActiveRecord::Base.connection.active?
     end
   end
 end
