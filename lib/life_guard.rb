@@ -14,7 +14,7 @@ module LifeGuard
 
     def call(env)
       begin
-        if env[@header_key]
+        if !env[@header_key].blank?
           switch_connection(env[@header_key])
         end
         return @app.call(env)

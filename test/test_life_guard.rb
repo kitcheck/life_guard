@@ -31,6 +31,11 @@ class TestLifeGuard < Minitest::Test
     assert_equal "bar", @dummy_app.result.first["bar"]
   end
 
+  def test_it_does_nothing_with_empty_headers
+    @lifeguard.call({"HTTP_FOO" => ""})
+    assert_equal "bar", @dummy_app.result.first["bar"]
+  end
+
   def test_it_switches_connection
     @lifeguard.call({'HTTP_FOO' => "alt"})
     assert_equal "foobar", @dummy_app.result.first["bar"]
