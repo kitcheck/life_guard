@@ -1,0 +1,9 @@
+machine:
+  ruby:
+    version: 2.2.2
+dependencies:
+  pre:
+    - bundle install --deployment --path vendor/bundle --without production
+test:
+  override:
+    - bundle exec ruby -Itest test/test_life_guard.rb
