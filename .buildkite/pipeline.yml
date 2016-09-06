@@ -1,0 +1,5 @@
+steps:
+  - name: 'Unit Test :boom:'
+    command: bundle exec ruby -Itest test/test_life_guard.rb
+    env:
+      BUILDKITE_DOCKER: true
