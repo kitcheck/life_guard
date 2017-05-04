@@ -14,7 +14,7 @@ module LifeGuard
 
     def call(env)
       begin
-        switch_connection(env[@header_key]) if !env[@header_key].blank?
+        switch_connection(env) if !env[@header_key].blank?
       rescue 
         return [404, {'Content-Type' => 'text/html'}, ["#{@failure_message}"]]
       else
@@ -24,9 +24,10 @@ module LifeGuard
       end
     end
 private
-    def switch_connection(header)
-      modified_config = @lambda.call(@config.deep_dup, header)
-      change_connection(modified_config)
+    def switch_connection(env)
+      config_hash = @lambda.call(@config.deep_dup, env[@header_key])
+      env['database'] = config_hash["database"].split('_').first
+      change_connection(config_hash["config"])
     end
 
     def change_connection(destination_config)
