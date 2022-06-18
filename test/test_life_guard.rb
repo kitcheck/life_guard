@@ -1,27 +1,37 @@
 require 'minitest_helper'
-require 'pry'
 
 class TestLifeGuard < Minitest::Test
   class Dummy
     def call(env)
       @result = ActiveRecord::Base.connection.execute("select * from foo")
+      ActiveRecord::Base.connected_to(role: :reading) do
+        @reader_result = ActiveRecord::Base.connection.execute("select * from foo")
+      end
     end
     def result
       @result
     end
+    def reader_result
+      @reader_result
+    end
   end
-
-
 
   def setup
     @dummy_app = Dummy.new
-    ActiveRecord::Base.configurations = { 'test' => {'adapter' => 'sqlite3', 'database' => 'test/db/test.db'} }
+    ActiveRecord::Base.configurations = { 'test' => {
+                                            'primary' => { 'adapter' => 'sqlite3', 'database' => 'test/db/test.db' },
+                                            'primary_replica' => { 'adapter' => 'sqlite3', 'database' => 'test/db/test.db', 'replica' => true }
+                                        } }
     ActiveRecord::Base.establish_connection(:test)
-    proc = Proc.new do |config, header| 
-      config['test']['database'] = config['test']['database'].gsub(/test\./, "test_#{header}.")
-      config
+    db_config = ActiveRecord::Base.configurations.configs_for(env_name: 'test', include_replicas: true, name: 'primary_replica')
+    ActiveRecord::Base.connected_to(role: :reading) do
+      ActiveRecord::Base.establish_connection(db_config)
     end
-    @lifeguard = LifeGuard::Rack.new(@dummy_app, { :header => "HTTP_FOO", :transformation => proc})
+    proc = Proc.new do |header| 
+      new_database = "test/db/test_#{header}.db"
+      new_database
+    end
+    @lifeguard = LifeGuard::Rack.new(@dummy_app, { :header => "HTTP_FOO", :transformation => proc, :rails_env => 'test'})
   end
 
   def teardown
@@ -33,35 +43,29 @@ class TestLifeGuard < Minitest::Test
 
   def test_it_does_nothing_with_no_headers
     @lifeguard.call({})
-    assert_equal "bar", @dummy_app.result.first["bar"]
+    assert_equal "main", @dummy_app.result.first["bar"]
+    assert_equal "main", @dummy_app.reader_result.first["bar"]
   end
 
   def test_it_does_nothing_with_empty_headers
     @lifeguard.call({"HTTP_FOO" => ""})
-    assert_equal "bar", @dummy_app.result.first["bar"]
+    assert_equal "main", @dummy_app.result.first["bar"]
+    assert_equal "main", @dummy_app.reader_result.first["bar"]
   end
 
   def test_it_switches_connection
     @lifeguard.call({'HTTP_FOO' => "alt"})
-    assert_equal "foobar", @dummy_app.result.first["bar"]
+    assert_equal "alt", @dummy_app.result.first["bar"]
+    assert_equal "alt", @dummy_app.reader_result.first["bar"]
   end
 
   def test_it_resets_connection_after
     @lifeguard.call({'HTTP_FOO' => "alt"})
-    assert_equal "foobar", @dummy_app.result.first["bar"]
-    ActiveRecord::Base.establish_connection(:test)
-    assert_equal "bar", ActiveRecord::Base.connection.execute("select * from foo").first["bar"]
-  end
-
-  def test_it_returns_404_if_no_connection
-    proc = Proc.new do |config, header| 
-      config['test']['database'] = config['test']['database'].gsub(/test\./, "/foo/bar/bar/foobar_#{header}.")
-      config
+    assert_equal "alt", @dummy_app.result.first["bar"]
+    assert_equal "alt", @dummy_app.reader_result.first["bar"]
+    assert_equal "main", ActiveRecord::Base.connection.execute("select * from foo").first["bar"]
+    ActiveRecord::Base.connected_to(role: :reading) do
+      assert_equal "main", ActiveRecord::Base.connection.execute("select * from foo").first["bar"]
     end
-    @lifeguard = LifeGuard::Rack.new(@dummy_app, { :header => "HTTP_FOO", 
-      :failure_message => "foo", :transformation => proc})
-    result = @lifeguard.call({'HTTP_FOO' => "alt"})
-    assert_equal nil, @dummy_app.result
-    assert_equal result, [404, {'Content-Type' => 'text/html'}, ["foo"]]
   end
 end
